@@ -6,12 +6,19 @@
 variables:
 - name: BuildParameters.RestoreBuildProjects
   value: '**/*.csproj'
+- name: BuildConfiguration
+  value: 'Release'
+- name: buildOutputFolder
+  value: $(Build.ArtifactStagingDirectory)
 - name: BuildParameters.TestProjects
   value: '**/*[Tt]ests/*.csproj'
+
 trigger:
   branches:
     include:
     - refs/heads/master
+pool:
+  name: 'shanupool'  # The pool name for your self-hosted agent, replace with the actual pool name
 name: $(date:yyyyMMdd)$(rev:.r)
 jobs:
 - job: Job_1
@@ -55,6 +62,38 @@ jobs:
     condition: succeededOrFailed()
     inputs:
       PathtoPublish: $(build.artifactstagingdirectory)
-      TargetPath: '\\my\share\$(Build.DefinitionName)\$(Build.BuildNumber)'
+      #TargetPath: '\\my\share\$(Build.DefinitionName)\$(Build.BuildNumber)'
+      ArtifactName: 'drop'
+      publishLocation: 'Container'
+- job: Deploy
+  displayName: 'Deploy to IIS Web Server'
+  dependsOn: Job_1
+  condition: succeeded()
+  pool:
+    name: 'shanupool'
+  steps:
+    # Step 1: Download build artifacts
+    - task: DownloadBuildArtifacts@0
+      displayName: 'Download build artifacts'
+      inputs:
+        buildType: 'specific'
+        project: $(System.TeamProject)
+        definition: '4'  # $(Build.DefinitionId)
+        buildVersionToDownload: 'latest'
+        downloadType: 'single'
+        artifactName: 'drop'
+        downloadPath: '$(build.artifactstagingdirectory)' #'$(Build.SourcesDirectory)'
+
+    - task: ExtractFiles@1
+      displayName: 'Extract published files'
+      inputs:
+        archiveFilePatterns: '$(build.artifactstagingdirectory)/drop/*.zip'  # Path to the zip file in the 'drop' folder
+        destinationFolder: '$(build.artifactstagingdirectory)/extracted'  # Destination folder where files will be extracted
+    - task: CopyFiles@2
+      displayName: 'Copy Web API files to IIS folder'
+      inputs:
+        SourceFolder: '$(build.artifactstagingdirectory)/extracted' #'$(buildOutputFolder)/webapi'
+        Contents: '**'
+        TargetFolder: 'C:\inetpub\wwwroot\myfolder'  # Change this path to your IIS folder 
 ...
 
